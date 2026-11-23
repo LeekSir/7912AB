@@ -752,10 +752,213 @@ void debug_uart_init()
 }
 #endif
 
+#ifdef CONFIG_STORY_BRINGUP
+#define PWR_KEY_IO          IO_PORTB_06   /* KEY_ADC_IN_IC */
+#define PWR_KEY_ADC_CH      AD_CH_PB06    /* PB6 = ADC 通道 4 */
+#define PWR_KEY_ADC_THRESHOLD 300         /* 实测松开~1022，按下~72 */
+#define PWR_KEY_ADC_INVALID 1             /* adc_add_sample_ch() 写的占位值，扫描完成前不可用 */
+#define PWR_KEY_LONG_MS     3000          /* 长按 3s 开机 */
+#define PWR_KEY_OFF_MS      1000          /* 短按 1s 关机 */
+#define PWR_KEY_SCAN_MS     10
+#define PWR_KEY_ADC_VALID_MIN   2
+#define PWR_KEY_ADC_VALID_MAX   0xfffe
+#define PWR_KEY_RELEASE_CNT     3       /* 3 × 10ms 释放消抖 */
+
+enum {
+    PWR_KEY_ST_WAIT,        /* 等待按下 */
+    PWR_KEY_ST_HOLDING,     /* 按下计时，需连续 3s */
+    PWR_KEY_ST_RUNNING,     /* 开机确认完成 */
+    PWR_KEY_ST_POWEROFF,    /* 已释放 PB7，等按键松手后回到 WAIT */
+};
+
+static u8 power_key_state = PWR_KEY_ST_WAIT;
+static u8 power_key_wait_release;
+static u8 power_key_boot_latched;    /* setup_arch 上电时锁存了 PB7，还没被状态机接管 */
+static u8 power_key_low_active;
+static u32 power_key_hold_start;     /* jiffies_msec() 时间戳，避免依赖定时器回调周期 */
+static u32 power_key_hold_print;
+static u32 power_key_low_start;
+static u8 power_key_release_cnt;
+
+u32 power_key_adc_value(void)
+{
+    return adc_get_value(PWR_KEY_ADC_CH);
+}
+
+static int power_key_adc_valid(u32 adc)
+{
+    /* 0/1 是 adc_add_sample_ch 占位/异常值，0xffff 是 SARADC 错误码 */
+    return (adc >= PWR_KEY_ADC_VALID_MIN) && (adc <= PWR_KEY_ADC_VALID_MAX);
+}
+
+static int power_key_is_down(void)
+{
+    return power_key_adc_value() < PWR_KEY_ADC_THRESHOLD;
+}
+
+static void power_key_init(void)
+{
+    gpio_direction_input(PWR_KEY_IO);
+    gpio_set_die(PWR_KEY_IO, 0);
+    gpio_set_pull_up(PWR_KEY_IO, 0);
+    gpio_set_pull_down(PWR_KEY_IO, 0);
+    gpio_latch_en(PWR_KEY_IO, 0);
+    adc_init();
+    /* 注意：adc_add_sample_ch() 只是把缓存值置成 1，真正读数要等
+       adc_scan 定时器扫一轮后才有效，所以这里不能立刻判断按键状态 */
+    adc_add_sample_ch(PWR_KEY_ADC_CH);
+}
+
+unsigned char PWR_CTL(unsigned char on_off)
+{
+    /* PB7 = PW_EN，高电平保持供电，低电平断电 */
+    gpio_direction_output(IO_PORTB_07, on_off ? 1 : 0);
+    return 0;
+}
+
+/* 按键状态机：10ms 定时器驱动，不阻塞 board_init / app_main。
+   之前是在 board_init 里 while(1) 阻塞等 3s，一旦按键检测异常，
+   app_main 的心跳永远起不来，串口看起来就像死机。 */
+static void power_key_scan(void *priv)
+{
+    u32 adc = power_key_adc_value();
+
+    (void)priv;
+
+    /* 跳过 ADC 首轮扫描前的占位值/错误码，避免上电瞬间误判为“按下” */
+    if (!power_key_adc_valid(adc)) {
+        return;     /* 无效采样：保持当前状态 */
+    }
+
+    switch (power_key_state) {
+    case PWR_KEY_ST_WAIT:
+        if (power_key_is_down()) {
+            /* 状态机接管供电锁存：USB 供电时上电不锁存 PB7，这里检测到按键才锁存 */
+            power_key_boot_latched = 0;
+            power_key_low_active = 0;
+            power_key_release_cnt = 0;
+            PWR_CTL(1);
+            power_key_hold_start = jiffies_msec();
+            power_key_hold_print = 0;
+            power_key_state = PWR_KEY_ST_HOLDING;
+            printf("STORY_BRINGUP: hold S1 for 3s... (adc=%d)\r\n", adc);
+        } else if (power_key_boot_latched) {
+            /* setup_arch 时锁存过，但 ADC 有效时按键已经松开：说明只是点了一下，
+               撤销开机，避免"点一下就一直开着"；连续 3 拍确认，滤掉按键毛刺 */
+            if (++power_key_release_cnt < PWR_KEY_RELEASE_CNT) {
+                break;      /* 消抖期间保持 PB7 锁存 */
+            }
+            power_key_release_cnt = 0;
+            power_key_boot_latched = 0;
+            printf("STORY_BRINGUP: key released before boot, power off\r\n");
+            PWR_CTL(0);
+        }
+        break;
+
+    case PWR_KEY_ST_HOLDING: {
+        u32 held_ms = jiffies_msec() - power_key_hold_start;
+
+        if (!power_key_is_down()) {
+            /* 不足 3s 松手：撤销这次开机（点一下不能把机器开起来）。
+               连续 3 拍确认松手，避免单次 ADC 毛刺误关机 */
+            if (++power_key_release_cnt < PWR_KEY_RELEASE_CNT) {
+                break;      /* 消抖期间保持 PB7 锁存 */
+            }
+            printf("STORY_BRINGUP: released <3s (%dms), power off (adc=%d)\r\n", held_ms, adc);
+            PWR_CTL(0);
+            power_key_state = PWR_KEY_ST_POWEROFF;
+            break;
+        }
+        power_key_release_cnt = 0;
+        /* 每 500ms 打印一次，跟定时器实际周期无关 */
+        if (held_ms / 500 > power_key_hold_print) {
+            power_key_hold_print = held_ms / 500;
+            printf("STORY_BRINGUP: holding %dms adc=%d\r\n", held_ms, adc);
+        }
+        if (held_ms >= PWR_KEY_LONG_MS) {
+            PWR_CTL(1);
+            printf("STORY_BRINGUP: 3s OK\r\n");
+            power_key_state = PWR_KEY_ST_RUNNING;
+            /* 先等松手，避免把开机这次长按算成关机短按 */
+            power_key_wait_release = 1;
+            power_key_low_active = 0;   /* 清掉上一次关机遗留的计时 */
+        }
+        break;
+    }
+
+    case PWR_KEY_ST_RUNNING:
+        if (power_key_wait_release) {
+            if (!power_key_is_down()) {
+                power_key_wait_release = 0;
+            }
+            break;
+        }
+        if (!power_key_is_down()) {
+            power_key_low_active = 0;
+            break;
+        }
+        if (!power_key_low_active) {
+            power_key_low_active = 1;
+            power_key_low_start = jiffies_msec();
+        } else if (jiffies_msec() - power_key_low_start >= PWR_KEY_OFF_MS) {
+            /* 运行中按住 1s 关机：先打印再断自锁，电池供电时 UART 会跟着掉电 */
+            printf("STORY_BRINGUP: power off\r\n");
+            PWR_CTL(0);
+            power_key_state = PWR_KEY_ST_POWEROFF;
+        }
+        break;
+
+    case PWR_KEY_ST_POWEROFF:
+        /* PB7 已拉低：电池供电时电源轨掉电、芯片直接死在这里；
+           USB 供电时等按键松手后回到 WAIT（保持关机，等下一次按键开机），
+           不复位，避免复位后 setup_arch 把还按着的按键当成上电重新锁存 */
+        if (!power_key_is_down()) {
+            power_key_state = PWR_KEY_ST_WAIT;
+        }
+        break;
+    }
+}
+
+void board_power_hold_init(void)
+{
+    /* 只有按键上电才锁存 PB7：
+       - 电池供电：S1 按下才把系统拉起来，必须在松手前锁存，否则掉电
+       - USB 供电：MCU 由 USB 供电时也可能跑到这里，此时 PB6 是松开态，
+         不能无条件拉高 PB7，否则一插 USB 就自动开机（电源灯常亮、关不掉）
+       先用数字口读一次 PB6 判断（按下约 0.23V → 低，松开约 3.3V → 高），
+       读完恢复模拟输入配置，给后面的 ADC 按键扫描用。 */
+    gpio_direction_input(PWR_KEY_IO);
+    gpio_set_die(PWR_KEY_IO, 1);
+    gpio_set_pull_down(PWR_KEY_IO, 0);
+    gpio_latch_en(PWR_KEY_IO, 0);
+
+    /* 连续采 3 次多数判决，避免上电瞬间电平不稳导致误判 */
+    u8 key_down = 0;
+    for (u8 i = 0; i < 3; i++) {
+        if (gpio_read(PWR_KEY_IO) == 0) {
+            key_down++;
+        }
+        delay(10);
+    }
+
+    if (key_down >= 2) {
+        gpio_direction_output(IO_PORTB_07, 1);   /* 按键上电：先锁存，等状态机接管 */
+        power_key_boot_latched = 1;
+    } else {
+        gpio_direction_output(IO_PORTB_07, 0);   /* 非按键上电：不锁存 */
+    }
+
+    gpio_set_pull_up(PWR_KEY_IO, 0);
+    gpio_set_die(PWR_KEY_IO, 0);
+}
+#endif
+
 void board_early_init()
 {
+#ifndef CONFIG_STORY_BRINGUP
 #ifdef CONFIG_AUDIO_ENABLE
     dac_early_init(0, dac_data.differ_output ? (dac_data.ch_num > 1 ? 0xf : 0x3): dac_data.hw_channel, 1000);
+#endif
 #endif
     devices_init();
 }
@@ -763,6 +966,19 @@ void board_early_init()
 void board_init()
 {
     board_power_init();
+
+#ifdef CONFIG_STORY_BRINGUP
+    power_key_init();
+    /* 首读必然是 adc_add_sample_ch() 的占位值 1，扫描完成后才会变成实测值 */
+    printf("STORY_BRINGUP: KEY_ADC=%d (1=扫描未完成)\r\n", power_key_adc_value());
+
+    /* 不阻塞：3s 长按/1s 关机判定放到 10ms 定时器里，
+       board_init 立即返回，app_main 的心跳照常起来。
+       定时器里每 500ms 打印一次 ADC，串口可以直接看到按键状态机在跑 */
+    sys_timer_add(NULL, power_key_scan, PWR_KEY_SCAN_MS);
+    return;
+#endif
+
 #ifdef CONFIG_RTC_ENABLE
     rtc_early_init();
 #endif

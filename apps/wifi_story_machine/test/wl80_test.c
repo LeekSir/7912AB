@@ -1187,6 +1187,8 @@ static int wl80_test_init()
     return thread_fork("wl80_test", 0, 2048, 0, 0, wl80_test_task, NULL);
 }
 #ifdef CONFIG_FPGA_TEST_ENABLE
+#ifndef CONFIG_STORY_BRINGUP
 late_initcall(wl80_test_init);
+#endif
 #endif
 

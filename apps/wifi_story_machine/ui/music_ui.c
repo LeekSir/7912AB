@@ -281,5 +281,7 @@ int ui_demo_task_init(void)
     puts("ui_demo_task_init \n\n");
     return thread_fork("ui_demo", 11, 1024, 32, 0, ui_demo, NULL);
 }
+#ifndef CONFIG_STORY_BRINGUP
 late_initcall(ui_demo_task_init);
+#endif
 

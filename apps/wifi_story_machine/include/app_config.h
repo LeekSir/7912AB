@@ -12,6 +12,9 @@
 
 #include "board_config.h"
 
+/* 阶段1：故事机板级 bring-up，只保留 UART0/PB1/PB2、PB6 ADC、PB7 PW_EN 和心跳 */
+#define CONFIG_STORY_BRINGUP                    1
+
 // #define CONFIG_SDFILE_EXT_ENABLE         //外挂隐藏sdfile区的支持
 // #define CONFIG_DMSDX_ENABLE              //msd多分区显示支持
 

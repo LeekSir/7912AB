@@ -112,7 +112,9 @@ static int lte_net_init(void)
 
     return 0;
 }
+#ifndef CONFIG_STORY_BRINGUP
 late_initcall(lte_net_init);
+#endif
 #endif
 
 #if defined CONFIG_BT_ENABLE && USER_SUPPORT_PROFILE_PAN

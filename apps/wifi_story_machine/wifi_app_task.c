@@ -976,7 +976,9 @@ static int wireless_net_init(void)   //主要是create wifi 线程的
     puts("wireless_net_init \n\n");
     return thread_fork("wifi_app_task", 10, 1792, 0, 0, wifi_app_task, NULL);
 }
+#ifndef CONFIG_STORY_BRINGUP
 late_initcall(wireless_net_init);
+#endif
 #endif
 
 #include "asm/power_interface.h"

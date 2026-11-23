@@ -433,7 +433,9 @@ void http_post_test_init(void *priv)
 {
     thread_fork("http_post_test_task", 28, 2 * 1024, 0, NULL, http_post_test_task, NULL);
 }
+#ifndef CONFIG_STORY_BRINGUP
 late_initcall(http_post_test_init);
+#endif
 
 
 

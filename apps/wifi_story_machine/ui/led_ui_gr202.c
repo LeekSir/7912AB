@@ -269,7 +269,9 @@ static int gr202_led_ui_init(void)
     led_ui_register_msg_handler("gr202_led", led_msg_handler);
     return 0;
 }
+#ifndef CONFIG_STORY_BRINGUP
 late_initcall(gr202_led_ui_init);
+#endif
 
 #endif
 

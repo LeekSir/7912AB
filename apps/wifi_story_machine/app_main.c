@@ -64,7 +64,9 @@ static u8 wifi_rx_tcb_stk_q[sizeof(struct thread_parm) + WIFI_RX_STK_SIZE * 4] A
 /*任务列表 */
 const struct task_info task_info_table[] = {
     {"thread_fork_kill",    25,      256,   0     },
+#ifndef CONFIG_STORY_BRINGUP
     {"led_ui_server",       30,      256,   64    },
+#endif
     {"app_core",            15,     APP_CORE_STK_SIZE,	  APP_CORE_Q_SIZE,		 app_core_tcb_stk_q },
     {"sys_event",           29,     SYS_EVENT_STK_SIZE,	   0, 					 sys_event_tcb_stk_q },
     {"systimer",            14,     SYSTIMER_STK_SIZE, 	   0,					 systimer_tcb_stk_q },
@@ -207,11 +209,28 @@ void app_default_event_handler(struct sys_event *event)
 }
 
 
+#ifdef CONFIG_STORY_BRINGUP
+extern u32 power_key_adc_value(void);
+
+static void story_bringup_hb(void *p)
+{
+    while (1) {
+        printf("STORY_BRINGUP_HB KEY_ADC=%d\r\n", power_key_adc_value());
+        os_time_dly(100);
+    }
+}
+#endif
+
 /*
  * 应用程序主函数
  */
 void app_main()
 {
+#ifdef CONFIG_STORY_BRINGUP
+    puts("------------- wifi_story_machine app main (STAGE1 BRINGUP) -------------\n");
+    os_task_create(story_bringup_hb, NULL, 10, 1024, 0, "story_bringup_hb");
+    return;
+#else
     struct intent it;
 
     puts("------------- wifi_story_machine app main-------------\n");
@@ -224,6 +243,7 @@ void app_main()
 #if defined CONFIG_BT_ENABLE && !defined CONFIG_WIFI_ENABLE
     extern void bt_ble_module_init(void);
     bt_ble_module_init();
+#endif
 #endif
 }
 

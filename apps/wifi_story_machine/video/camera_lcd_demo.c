@@ -335,6 +335,8 @@ static int camera_to_lcd_init(void)
 
     return 0;
 }
+#ifndef CONFIG_STORY_BRINGUP
 late_initcall(camera_to_lcd_init);
+#endif
 
 #endif
