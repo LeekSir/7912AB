@@ -195,7 +195,7 @@ make ac791n_wifi_story_machine
 ## 六、风险与下一步
 
 - 阶段 1 只验证故事机内核 + 板级电源/串口，不含音频/BT/WiFi/UI
-- 阶段 2 需要按原理图确认 PA、喇叭、mic 通道和增益
+- 阶段 2（已完成，见 §七）：DAC/功放/喇叭 + MIC0 录音回放；MIC1 AEC 和音量表待后续
 - 阶段 3 需要把摄像头板的 LCD/EMI/IIC 配置移植到故事机板级，打开 `CONFIG_UI_ENABLE`
 - 阶段 4 需要验证 BT 天线/与 WiFi 共存
 - 阶段 5 豆包 AI 无现成 demo，需要基于 WiFi/HTTP/WebSocket + 音频流实现
@@ -206,3 +206,36 @@ make ac791n_wifi_story_machine
 - 3s 从出现 `hold S1 for 3s...` 起算，电池冷启动实际按住约 3.4~3.5s
 - 电池供电下软复位/WDT/OTA 复位时，`setup_arch` 采样到未按键会拉低 PB7 → 直接断电而不是重启；stage1 无 OTA 可接受，量产前需按复位源保持锁存
 - USB 供电下 1s 关机只释放 PB7，不复位，心跳继续打印，属于设计行为
+
+## 七、阶段 2：音频 bring-up（2026-11-23）
+
+原理图：`WB-AC79-01_R01_SCH_1104.pdf`（仓库根目录）。
+
+### 硬件确认
+
+| 项 | 连接 |
+|---|---|
+| 功放 | NS4150B，单端输入 INN ← `DAC_L_OUT`（SoC pin50 / `AMP_L_OUT_IC`） |
+| 功放 SD | `AMP_MUTE_OUT` = SoC **pin18 = PB5**（AC7912A datasheet：pin18 PB5 = `PLNK0_DAT1/PLNK1_DAT1/SPI1_DIA/FPIN2/CAP0`；**PB3 是 pin19 `CHR_PG`**）。低=输出，高=切断；RA8 10K 上拉到 3V3_M |
+| 喇叭 | `SPK_LP` / `SPK_LN`（1.25mm 2pin） |
+| MIC0 | 差分，CP=PA2、CN=PA1（`LADC_CH_MIC0_P_N`） |
+| MIC1 | 差分，PH9/PH8，来自功放输出回采（AEC），不是第二颗 mic |
+| 3V3_M | 由 4V2_SUB 经 RD36 10K 上拉常开；PA9 是 SD0_DAT0，不能当 VCC33 控制脚 |
+
+### 代码修改
+
+- `board_7912AB_cfg.h`：`TCFG_DAC_MUTE_PORT = PB5`、`TCFG_DAC_MUTE_VALUE = 1`、`#undef PORT_VCC33_CTRL_IO`；MIC 只开 `LADC_CH_MIC0_P_N`
+- `dac_data`：`hw_channel = 0x03`、`ch_num = 2`（单端 L/R）、`pa_auto_mute = 1`
+- bring-up 下恢复 `dac_early_init`，`CONFIG_STORY_AUDIO_TEST` 打开
+- `app_main.c`：MIC0 录 3s → 内存 → 喇叭回放闭环测试（每 ~5s 一轮）
+
+### 实测结论
+
+- 喇叭：PCM 1kHz 与提示音均正常出声
+- mic：录音峰值随说话/敲击明显变化，回放可听到
+- 测试回放期间强制 `dac_set_gain(31)` / `dac_set_volume(16384)`；正常音量表链路和 MIC1 AEC 回采待后续验证
+
+### 已知限制（阶段 2）
+
+- MIC1（功放回采 AEC）尚未接入，AEC/回声消除后续再做
+- 回放音量链路目前用强制最大增益验证，产品音量表需再校准

@@ -221,6 +221,177 @@ static void story_bringup_hb(void *p)
 }
 #endif
 
+#ifdef CONFIG_STORY_AUDIO_TEST
+#include "server/audio_server.h"
+#include "server/server_core.h"
+
+#define MIC_TEST_SR             16000
+#define MIC_TEST_ADC_CH_BIT     0       /* MIC0 -> ADC 逻辑通道 0（PA2/PA1 差分） */
+#define MIC_TEST_SEC            3
+#define MIC_TEST_BUF_SIZE       (MIC_TEST_SR * 2 * MIC_TEST_SEC * 2)   /* 留 2x 余量 */
+
+extern void dac_set_gain(u8 gain, u8 fade_opt);
+extern void dac_set_volume(s16 volume);
+
+static u8 *mic_test_buf;
+static volatile u32 mic_test_len;
+static u32 mic_test_play_pos;
+static volatile u32 mic_test_peak;
+static volatile u32 mic_test_frames;
+
+static int mic_test_fwrite(void *file, void *data, u32 len)
+{
+    s16 *pcm = (s16 *)data;
+    u32 peak = 0;
+
+    (void)file;
+
+    for (u32 i = 0; i < len / 2; i++) {
+        s32 v = pcm[i];     /* s32：避免 -32768 取负溢出 */
+        if (v < 0) {
+            v = -v;
+        }
+        if (v > peak) {
+            peak = v;
+        }
+    }
+    if (peak > mic_test_peak) {
+        mic_test_peak = peak;
+    }
+
+    if (mic_test_buf && mic_test_len + len <= MIC_TEST_BUF_SIZE) {
+        memcpy(mic_test_buf + mic_test_len, data, len);
+        mic_test_len += len;
+    }
+    mic_test_frames++;
+    return len;
+}
+
+static int mic_test_fread(void *file, void *data, u32 len)
+{
+    u32 remain = mic_test_len - mic_test_play_pos;
+
+    (void)file;
+
+    if (remain == 0) {
+        return 0;   /* EOF */
+    }
+    if (len > remain) {
+        len = remain;
+    }
+    memcpy(data, mic_test_buf + mic_test_play_pos, len);
+    mic_test_play_pos += len;
+    return len;
+}
+
+static const struct audio_vfs_ops mic_test_vfs_ops = {
+    .fwrite = mic_test_fwrite,
+    .fread  = mic_test_fread,
+};
+
+/* 阶段2 mic 测试：MIC0 差分（CP=PA2 / CN=PA1）录 3s，再通过喇叭回放 */
+static void story_mic_test_task(void *p)
+{
+    union audio_req req;
+
+    os_time_dly(300);   /* 等系统/音频服务稳定 */
+
+    if (!mic_test_buf) {
+        mic_test_buf = malloc(MIC_TEST_BUF_SIZE);
+        if (!mic_test_buf) {
+            printf("STORY_MIC_TEST: no mem\r\n");
+            return;
+        }
+    }
+
+    while (1) {
+        /******** 录音 ********/
+        void *enc = server_open("audio_server", "enc");
+        if (!enc) {
+            printf("STORY_MIC_TEST: open enc fail\r\n");
+            os_time_dly(300);
+            continue;
+        }
+
+        mic_test_peak = 0;
+        mic_test_frames = 0;
+        mic_test_len = 0;
+
+        memset(&req, 0, sizeof(req));
+        req.enc.cmd = AUDIO_ENC_OPEN;
+        req.enc.channel = 1;
+        req.enc.channel_bit_map = BIT(MIC_TEST_ADC_CH_BIT);
+        req.enc.volume = 100;               /* mic 增益 */
+        req.enc.sample_rate = MIC_TEST_SR;
+        req.enc.frame_size = MIC_TEST_SR / 100 * 4;
+        req.enc.output_buf_len = req.enc.frame_size * 3;
+        req.enc.format = "pcm";
+        req.enc.sample_source = "mic";
+        req.enc.vfs_ops = &mic_test_vfs_ops;
+        req.enc.file = (FILE *)mic_test_buf;
+
+        if (server_request(enc, AUDIO_REQ_ENC, &req)) {
+            printf("STORY_MIC_TEST: enc open fail\r\n");
+            server_close(enc);
+            os_time_dly(300);
+            continue;
+        }
+
+        printf("STORY_MIC_TEST: MIC0 (CP=PA2/CN=PA1) recording %ds...\r\n", MIC_TEST_SEC);
+        for (int i = 0; i < MIC_TEST_SEC * 2; i++) {
+            os_time_dly(50);    /* 500ms */
+            printf("STORY_MIC_TEST: peak=%d frames=%d\r\n", mic_test_peak, mic_test_frames);
+            mic_test_peak = 0;
+        }
+
+        req.enc.cmd = AUDIO_ENC_CLOSE;
+        server_request(enc, AUDIO_REQ_ENC, &req);
+        server_close(enc);
+
+        printf("STORY_MIC_TEST: recorded %d bytes, play back\r\n", mic_test_len);
+
+        /******** 回放（先强制最大增益/音量，排除音量链路问题） ********/
+        if (mic_test_len) {
+            void *dec = server_open("audio_server", "dec");
+            if (!dec) {
+                printf("STORY_MIC_TEST: open dec fail\r\n");
+            } else {
+                memset(&req, 0, sizeof(req));
+                req.dec.cmd = AUDIO_DEC_OPEN;
+                req.dec.volume = 100;
+                req.dec.output_buf_len = 4 * 1024;
+                req.dec.channel = 1;
+                req.dec.sample_rate = MIC_TEST_SR;
+                req.dec.dec_type = "pcm";
+                req.dec.sample_source = "dac";
+                req.dec.vfs_ops = &mic_test_vfs_ops;
+                req.dec.file = (FILE *)mic_test_buf;
+
+                if (server_request(dec, AUDIO_REQ_DEC, &req)) {
+                    printf("STORY_MIC_TEST: dec open fail\r\n");
+                } else {
+                    mic_test_play_pos = 0;
+                    req.dec.cmd = AUDIO_DEC_START;
+                    server_request(dec, AUDIO_REQ_DEC, &req);
+
+                    for (int i = 0; i < MIC_TEST_SEC * 10 + 20; i++) {
+                        os_time_dly(1);
+                        dac_set_gain(31, 0);
+                        dac_set_volume(16384);
+                    }
+
+                    req.dec.cmd = AUDIO_DEC_STOP;
+                    server_request(dec, AUDIO_REQ_DEC, &req);
+                }
+                server_close(dec);
+            }
+        }
+
+        os_time_dly(100);   /* 停 1s 再来一轮 */
+    }
+}
+#endif
+
 /*
  * 应用程序主函数
  */
@@ -229,6 +400,9 @@ void app_main()
 #ifdef CONFIG_STORY_BRINGUP
     puts("------------- wifi_story_machine app main (STAGE1 BRINGUP) -------------\n");
     os_task_create(story_bringup_hb, NULL, 10, 1024, 0, "story_bringup_hb");
+#ifdef CONFIG_STORY_AUDIO_TEST
+    os_task_create(story_mic_test_task, NULL, 11, 2048, 0, "story_mic_test");
+#endif
     return;
 #else
     struct intent it;

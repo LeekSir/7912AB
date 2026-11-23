@@ -283,13 +283,18 @@ SPI2_PLATFORM_DATA_END()
 
 #ifdef CONFIG_AUDIO_ENABLE
 static const struct dac_platform_data dac_data = {
+    /* 功放 SD：PB5，低=输出、高=切断；由 DAC 驱动自动控制 */
     .pa_auto_mute = 1,
     .pa_mute_port = TCFG_DAC_MUTE_PORT,
     .pa_mute_value = TCFG_DAC_MUTE_VALUE,
+    .sw_differ = 0,
     .differ_output = 0,
-    .hw_channel = 0x01,
-    .ch_num = 1,	//差分只需开一个通道
+    /* WB-AC79-01 功放 NS4150B 单端输入；单端模式需要 2 个数字通道，
+       同时打开 DACL/DACR，排除"只开 1 个数字通道导致 L 无输出" */
+    .hw_channel = 0x03,
+    .ch_num = 2,
     .vcm_init_delay_ms = 1000,
+    .mute_delay_ms = 200,
 #ifdef CONFIG_DEC_ANALOG_VOLUME_ENABLE
     .fade_enable = 1,
     .fade_delay_ms = 10,
@@ -955,7 +960,7 @@ void board_power_hold_init(void)
 
 void board_early_init()
 {
-#ifndef CONFIG_STORY_BRINGUP
+#if !defined(CONFIG_STORY_BRINGUP) || defined(CONFIG_STORY_AUDIO_TEST)
 #ifdef CONFIG_AUDIO_ENABLE
     dac_early_init(0, dac_data.differ_output ? (dac_data.ch_num > 1 ? 0xf : 0x3): dac_data.hw_channel, 1000);
 #endif
@@ -971,6 +976,10 @@ void board_init()
     power_key_init();
     /* 首读必然是 adc_add_sample_ch() 的占位值 1，扫描完成后才会变成实测值 */
     printf("STORY_BRINGUP: KEY_ADC=%d (1=扫描未完成)\r\n", power_key_adc_value());
+#if defined(CONFIG_STORY_AUDIO_TEST) && defined(CONFIG_AUDIO_ENABLE)
+    printf("STORY_BRINGUP: DAC mute port=%d val=%d auto=%d\r\n",
+           dac_data.pa_mute_port, dac_data.pa_mute_value, dac_data.pa_auto_mute);
+#endif
 
     /* 不阻塞：3s 长按/1s 关机判定放到 10ms 定时器里，
        board_init 立即返回，app_main 的心跳照常起来。
