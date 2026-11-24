@@ -209,6 +209,13 @@ static void ui_demo(void *priv)
 
     set_lcd_show_data_mode(UI);
     music_ui_server_init();
+
+#if TCFG_TOUCH_SPT5113C_ENABLE
+    /* UI 就绪后再启动触摸，避免 UI 未初始化时消息投递失败 */
+    extern int SPT5113C_task_init(void);
+    SPT5113C_task_init();
+#endif
+
     open_animation(10);
     ui_show_main(PAGE_0);
 

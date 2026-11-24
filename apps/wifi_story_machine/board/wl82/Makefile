@@ -562,6 +562,7 @@ c_SRC_FILES := \
 	../../../../apps/common/ui/lcd_driver/lcd_jd9853.c \
 	../../../../apps/common/ui/lcd_driver/lcd_tm9486.c \
 	../../../../apps/common/ui/touch_panel/ft6236.c \
+	../../../../apps/common/ui/touch_panel/spt5113c.c \
 	../../../../apps/common/ui/touch_panel/gt911.c \
 	../../../../apps/common/ui/ui_action_video.c \
 	../../../../apps/common/ui/ui_driver/interface/ui_platform.c \
