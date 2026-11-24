@@ -143,7 +143,7 @@ static void ui_play_power_show(char percent)
 }
 
 /*==========ui_MP3播放开机画面==========*/
-static void open_animation(char speed)//开机图片以及开机音乐播放
+__attribute__((unused)) static void open_animation(char speed)//开机图片以及开机音乐播放
 {
     set_lcd_show_data_mode(UI);
     ui_show_main(PAGE_1);
@@ -216,8 +216,14 @@ static void ui_demo(void *priv)
     SPT5113C_task_init();
 #endif
 
+#if defined(CONFIG_BOARD_7912AB) && TCFG_LCD_JD9853_ENABLE
+    /* 7912AB demo：跳过杰理开机动画和默认页面，直接进向日葵 + 滑动菜单 */
+    extern void ui_demo_slide_start(void);
+    ui_demo_slide_start();
+#else
     open_animation(10);
     ui_show_main(PAGE_0);
+#endif
 
     while (1) {
         os_taskq_pend("taskq", msg, ARRAY_SIZE(msg)); //接收app_music.c中发来的消息 没有消息在这行等待

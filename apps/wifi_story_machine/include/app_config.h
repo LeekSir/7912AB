@@ -846,12 +846,8 @@
 #endif
 
 #if TCFG_LCD_ST7789S_ENABLE || TCFG_LCD_ST7789V_ENABLE || TCFG_LCD_JD9853_ENABLE || TCFG_LCD_ILI9341_ENABLE || TCFG_LCD_ILI9481_ENABLE
-#if defined(CONFIG_BOARD_7912AB)
-/* 7912AB 阶段3：先关 TE，避免 TE 链路未通导致不发帧/不开背光；后续再单独调 TE */
-#define USE_LCD_TE                          0
-#else
+/* 7912AB：PAN_TE -> PH5，JD9853 已开 TEON，按面板 V-blank 同步推屏 */
 #define USE_LCD_TE                          1
-#endif
 #endif
 
 #endif//CONFIG_UI_ENABLE

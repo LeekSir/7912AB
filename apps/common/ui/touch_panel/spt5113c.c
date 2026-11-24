@@ -47,6 +47,25 @@
 static void *iic;
 static u8 touch_en = 1;
 
+/* 供 UI demo 读取最近一次原始触摸数据（不做坐标换算） */
+static volatile int spt_last_x;
+static volatile int spt_last_y;
+static volatile int spt_last_down;
+
+int spt5113c_get_touch(int *x, int *y, int *down)
+{
+    if (x) {
+        *x = spt_last_x;
+    }
+    if (y) {
+        *y = spt_last_y;
+    }
+    if (down) {
+        *down = spt_last_down;
+    }
+    return 1;
+}
+
 static u8 spt_wr_asu(u16 reg, const u8 *data, u32 len)
 {
     u8 ret = 0;
