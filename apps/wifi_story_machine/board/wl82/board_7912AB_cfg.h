@@ -35,6 +35,14 @@
 #define LCD_W                   240
 #define LCD_H                   296
 
+/* SPT5113C 触摸坐标映射：默认按原厂屏幕坐标。
+   实测 raw 为 12bit 时把 RAW_MAX 改成 4096；方向不对时改 SWAP/INVERT。 */
+#define SPT_RAW_MAX_X           LCD_W
+#define SPT_RAW_MAX_Y           LCD_H
+#define SPT_TOUCH_SWAP_XY       0
+#define SPT_TOUCH_INVERT_X      0
+#define SPT_TOUCH_INVERT_Y      0
+
 #ifdef CONFIG_BOARD_MUTEX
 #error "board config can not enable at the same time, just select one!!!"
 #else

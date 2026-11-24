@@ -38,6 +38,26 @@
 #define VK_X                    LCD_W
 #define VK_Y                    LCD_H
 
+/* 坐标映射：默认按原厂"已是屏幕坐标"处理。
+ * 实测 raw 为 12bit（0~4095）时把 SPT_RAW_MAX_X/Y 改成 4096；
+ * 方向不对时用 SPT_TOUCH_SWAP_XY / INVERT_X / INVERT_Y 修正。
+ * 这些宏可在 board_7912AB_cfg.h 中覆盖。 */
+#ifndef SPT_RAW_MAX_X
+#define SPT_RAW_MAX_X           (VK_X)
+#endif
+#ifndef SPT_RAW_MAX_Y
+#define SPT_RAW_MAX_Y           (VK_Y)
+#endif
+#ifndef SPT_TOUCH_SWAP_XY
+#define SPT_TOUCH_SWAP_XY       0
+#endif
+#ifndef SPT_TOUCH_INVERT_X
+#define SPT_TOUCH_INVERT_X      0
+#endif
+#ifndef SPT_TOUCH_INVERT_Y
+#define SPT_TOUCH_INVERT_Y      0
+#endif
+
 #if 1
 #define log_info(x, ...)        printf("\n[SPT5113C]> " x " \n", ## __VA_ARGS__)
 #else
@@ -47,21 +67,33 @@
 static void *iic;
 static u8 touch_en = 1;
 
-/* 供 UI demo 读取最近一次原始触摸数据（不做坐标换算） */
+/* 供 UI 读取最近一次映射后的触摸坐标（屏幕坐标）；seq 保证三元组一致 */
 static volatile int spt_last_x;
 static volatile int spt_last_y;
 static volatile int spt_last_down;
+static volatile u32 spt_last_seq;
 
 int spt5113c_get_touch(int *x, int *y, int *down)
 {
+    u32 s1, s2;
+    int lx, ly, ld;
+
+    do {
+        s1 = spt_last_seq;
+        lx = spt_last_x;
+        ly = spt_last_y;
+        ld = spt_last_down;
+        s2 = spt_last_seq;
+    } while ((s1 & 1) || s1 != s2);
+
     if (x) {
-        *x = spt_last_x;
+        *x = lx;
     }
     if (y) {
-        *y = spt_last_y;
+        *y = ly;
     }
     if (down) {
-        *down = spt_last_down;
+        *down = ld;
     }
     return 1;
 }
@@ -288,12 +320,73 @@ static void spt_start_work(void)
     }
 }
 
+static int spt_scale(int v, int raw_max, int disp_n)
+{
+    if (v < 0) {
+        v = 0;
+    }
+    if (v > raw_max - 1) {
+        v = raw_max - 1;
+    }
+    return (int)((s32)v * (disp_n - 1) / (raw_max - 1));
+}
+
+/* 原始坐标 -> 屏幕坐标（可 swap / invert，见文件头部宏） */
+static int spt_raw_max_x = SPT_RAW_MAX_X;
+static int spt_raw_max_y = SPT_RAW_MAX_Y;
+
+static void spt_map(int rx, int ry, int *ox, int *oy)
+{
+    /* 原厂固件若上报 12bit（0~4095），会出现远大于屏幕尺寸的值；
+       自动切到 4096，避免所有触摸被截断到右下角。 */
+    if (rx > VK_X * 2 && spt_raw_max_x < 4096) {
+        spt_raw_max_x = 4096;
+        log_info("raw X > %d, switch range to 4096", VK_X * 2);
+    }
+    if (ry > VK_Y * 2 && spt_raw_max_y < 4096) {
+        spt_raw_max_y = 4096;
+        log_info("raw Y > %d, switch range to 4096", VK_Y * 2);
+    }
+
+#if SPT_TOUCH_SWAP_XY
+    int x = spt_scale(ry, spt_raw_max_y, VK_X);
+    int y = spt_scale(rx, spt_raw_max_x, VK_Y);
+#else
+    int x = spt_scale(rx, spt_raw_max_x, VK_X);
+    int y = spt_scale(ry, spt_raw_max_y, VK_Y);
+#endif
+#if SPT_TOUCH_INVERT_X
+    x = (VK_X - 1) - x;
+#endif
+#if SPT_TOUCH_INVERT_Y
+    y = (VK_Y - 1) - y;
+#endif
+    *ox = x;
+    *oy = y;
+}
+
 /* 触摸坐标先按原厂方式直接使用，等触摸厂家调整固件后再做标定 */
 static void spt_report(int x, int y, int down)
 {
     static u8 last_state = 0;
     static int last_x = 0, last_y = 0;
     struct touch_event t = {0};
+    int mx, my;
+
+    spt_map(x, y, &mx, &my);
+
+    /* 发布给 spt5113c_get_touch()；松开时保留最后位置。
+       seq 奇数表示写入中，读取端据此避免读到 x/y/down 混合的样本。 */
+    spt_last_seq++;
+    if (down) {
+        spt_last_x = mx;
+        spt_last_y = my;
+    }
+    spt_last_down = down;
+    spt_last_seq++;
+
+    x = mx;
+    y = my;
 
     if (x < 0) {
         x = 0;
@@ -341,6 +434,7 @@ static void spt_touch_task(void *p)
     u8 code = 0;
     int last_x = -1, last_y = -1, last_down = -1;
     u32 i2c_err = 0;
+    u32 last_log_ms = 0;
 
     /* 复位（原厂时序：H -> L -> H） */
     gpio_direction_output(pdata->touch_reset_pin, 1);
@@ -393,6 +487,12 @@ static void spt_touch_task(void *p)
         int down = (buf[2] != 0) || (buf[3] & 0x80);
         int x = buf[4] | ((buf[3] & 0x0f) << 8);
         int y = buf[6] | ((buf[5] & 0x0f) << 8);
+
+        /* 每 5s 输出一次轮询值，便于区分“没读到数据 / 量程不对 / down 标志不对” */
+        if (timer_get_ms() - last_log_ms >= 5000) {
+            last_log_ms = timer_get_ms();
+            log_info("poll x=%d y=%d down=%d", x, y, down);
+        }
 
         if (x != last_x || y != last_y || down != last_down) {
             last_x = x;

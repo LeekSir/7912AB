@@ -217,9 +217,15 @@ static void ui_demo(void *priv)
 #endif
 
 #if defined(CONFIG_BOARD_7912AB) && TCFG_LCD_JD9853_ENABLE
+#if CONFIG_STORY_UI_TOUCH_TARGET
+    /* 7912AB：5 点触摸靶子测试 UI */
+    extern void ui_touch_target_start(void);
+    ui_touch_target_start();
+#else
     /* 7912AB demo：跳过杰理开机动画和默认页面，直接进向日葵 + 滑动菜单 */
     extern void ui_demo_slide_start(void);
     ui_demo_slide_start();
+#endif
 #else
     open_animation(10);
     ui_show_main(PAGE_0);

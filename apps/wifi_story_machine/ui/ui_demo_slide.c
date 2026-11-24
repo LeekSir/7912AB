@@ -286,6 +286,10 @@ static void demo_task(void *p)
 
     while (1) {
         spt5113c_get_touch(&rx, &ry, &down);
+        /* 触摸返回原生竖屏 240x296，demo 在物理横屏 296x240 上渲染，
+           这里按 dp_flush 的旋转做逆变换，保证 dx/dy 与画面方向一致 */
+        int tx = LCD_H - 1 - ry;
+        int ty = rx;
         now = timer_get_ms();
 
         /* 开机画面：向日葵摇曳 5s */
@@ -307,8 +311,8 @@ static void demo_task(void *p)
         }
 
         if (down && !touch_down_last) {
-            touch_start_x = rx;
-            touch_start_y = ry;
+            touch_start_x = tx;
+            touch_start_y = ty;
         }
         if (!down && touch_down_last) {
             int dx = touch_last_x - touch_start_x;
@@ -318,8 +322,8 @@ static void demo_task(void *p)
                 auto_tick = timer_get_ms();
             }
         }
-        touch_last_x = rx;
-        touch_last_y = ry;
+        touch_last_x = tx;
+        touch_last_y = ty;
         touch_down_last = down;
 
         if (anim_state == ANIM_PAGE) {

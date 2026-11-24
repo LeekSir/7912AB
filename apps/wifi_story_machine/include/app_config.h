@@ -27,6 +27,11 @@
 #define CONFIG_UI_ENABLE                        1
 #define CONFIG_STORY_UI                         1
 
+/* 1 = 5 点触摸靶子（默认）；0 = 向日葵滑动 demo */
+#ifndef CONFIG_STORY_UI_TOUCH_TARGET
+#define CONFIG_STORY_UI_TOUCH_TARGET            1
+#endif
+
 #if defined(CONFIG_STORY_LCD_TEST) && !defined(CONFIG_UI_ENABLE)
 /* 纯屏点亮测试（不开 UI）时的 LCD 驱动选择 */
 #define TCFG_LCD_ENABLE                         1

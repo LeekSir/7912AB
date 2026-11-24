@@ -617,6 +617,7 @@ c_SRC_FILES := \
 	../../../../apps/wifi_story_machine/ui/led_ui_gr202.c \
 	../../../../apps/wifi_story_machine/ui/music_ui.c \
 	../../../../apps/wifi_story_machine/ui/ui_demo_slide.c \
+	../../../../apps/wifi_story_machine/ui/ui_touch_target.c \
 	../../../../apps/wifi_story_machine/ui/ui_demo_assets.c \
 	../../../../apps/wifi_story_machine/video/camera_lcd_demo.c \
 	../../../../apps/wifi_story_machine/video/get_yuv_data.c \
