@@ -29,7 +29,7 @@
 
 /* 1 = 5 点触摸靶子（默认）；0 = 向日葵滑动 demo */
 #ifndef CONFIG_STORY_UI_TOUCH_TARGET
-#define CONFIG_STORY_UI_TOUCH_TARGET            1
+#define CONFIG_STORY_UI_TOUCH_TARGET            0
 #endif
 
 #if defined(CONFIG_STORY_LCD_TEST) && !defined(CONFIG_UI_ENABLE)
