@@ -189,6 +189,7 @@ int lcd_read_data(u8 *buf, u32 len);
 void init_TE(void (*cb)(u8 *buf, u32 buf_size));
 void user_lcd_init(void); //只初始化屏
 void user_ui_lcd_init(void); //调用该函数完成ui和LCD初始化
+void lcd_test_show_color(u32 color); //bring-up: 刷纯色验证屏
 void ui_show_frame(u8 *buf, u32 len);//该接口主要用于显示UI数据  RGB数据接口
 void lcd_show_frame(u8 *buf, u32 size, int width, int height);//数据为YUV数据
 void play_gif_to_lcd(char *gif_path, char play_speed);//播放GIF动图 seepd = 1 = 10ms

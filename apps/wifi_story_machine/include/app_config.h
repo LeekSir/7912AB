@@ -20,6 +20,26 @@
 #define CONFIG_STORY_AUDIO_TEST                 1
 #endif
 
+/* 阶段3：LCD bring-up（NT1137G0020-V2，240x296，JD9853，4L1P SPI） */
+#define CONFIG_STORY_LCD_TEST                   1
+
+/* 阶段3 UI：打开 DUI UI 框架（lcd_ui_init + UIPACKRES + music_ui） */
+#define CONFIG_UI_ENABLE                        1
+#define CONFIG_STORY_UI                         1
+
+#if defined(CONFIG_STORY_LCD_TEST) && !defined(CONFIG_UI_ENABLE)
+/* 纯屏点亮测试（不开 UI）时的 LCD 驱动选择 */
+#define TCFG_LCD_ENABLE                         1
+#define TCFG_LCD_ILI9481_ENABLE                 0
+#define TCFG_LCD_ILI9341_ENABLE                 0
+#define TCFG_LCD_ST7789S_ENABLE                 0
+#define TCFG_LCD_ST7789V_ENABLE                 0
+#define TCFG_LCD_JD9853_ENABLE                  1
+#define TCFG_LCD_ST7735S_ENABLE                 0
+#define TCFG_LCD_TM9486X_ENABLE                 0
+#define HORIZONTAL_SCREEN                       0
+#endif
+
 // #define CONFIG_SDFILE_EXT_ENABLE         //外挂隐藏sdfile区的支持
 // #define CONFIG_DMSDX_ENABLE              //msd多分区显示支持
 
@@ -784,10 +804,18 @@
 #define TCFG_USE_SD_ADD_UI_FILE             0  //使用SD卡加载资源文件
 
 #if TCFG_LCD_ENABLE
+#if defined(CONFIG_BOARD_7912AB)
+/* NT1137G0020-V2：JD9853 240x296 SPI */
+#define TCFG_LCD_ILI9481_ENABLE             0
+#define TCFG_LCD_ST7789V_ENABLE             0
+#define TCFG_LCD_JD9853_ENABLE              1
+#else
 #define TCFG_LCD_ILI9481_ENABLE             1
+#define TCFG_LCD_ST7789V_ENABLE             0
+#define TCFG_LCD_JD9853_ENABLE              0
+#endif
 #define TCFG_LCD_ILI9341_ENABLE             0
 #define TCFG_LCD_ST7789S_ENABLE             0
-#define TCFG_LCD_ST7789V_ENABLE             0
 #define TCFG_LCD_ST7735S_ENABLE             0
 #define TCFG_LCD_480x272_8BITS              0
 #endif
@@ -798,20 +826,26 @@
 #define TCFG_TOUCH_GT911_ENABLE             0
 #endif
 
-#if TCFG_LCD_ILI9481_ENABLE
+#if TCFG_LCD_ILI9481_ENABLE && !defined(CONFIG_BOARD_7912AB)
 #define TCFG_TOUCH_FT6236_ENABLE            1
 #else
+/* 7912AB 触摸是 SPT5113C，驱动后续单独接入 */
 #define TCFG_TOUCH_FT6236_ENABLE            0
 #endif
 
-#if TCFG_LCD_480x272_8BITS || TCFG_LCD_ST7789V_ENABLE || TCFG_LCD_ILI9341_ENABLE || TCFG_LCD_ILI9481_ENABLE
+#if TCFG_LCD_480x272_8BITS || TCFG_LCD_ST7789V_ENABLE || TCFG_LCD_JD9853_ENABLE || TCFG_LCD_ILI9341_ENABLE || TCFG_LCD_ILI9481_ENABLE
 #define HORIZONTAL_SCREEN                   0//0为使用竖屏
 #else
 #define HORIZONTAL_SCREEN                   1//1为使能横屏配置
 #endif
 
-#if TCFG_LCD_ST7789S_ENABLE || TCFG_LCD_ILI9341_ENABLE || TCFG_LCD_ILI9481_ENABLE
+#if TCFG_LCD_ST7789S_ENABLE || TCFG_LCD_ST7789V_ENABLE || TCFG_LCD_JD9853_ENABLE || TCFG_LCD_ILI9341_ENABLE || TCFG_LCD_ILI9481_ENABLE
+#if defined(CONFIG_BOARD_7912AB)
+/* 7912AB 阶段3：先关 TE，避免 TE 链路未通导致不发帧/不开背光；后续再单独调 TE */
+#define USE_LCD_TE                          0
+#else
 #define USE_LCD_TE                          1
+#endif
 #endif
 
 #endif//CONFIG_UI_ENABLE

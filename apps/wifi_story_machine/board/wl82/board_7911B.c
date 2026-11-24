@@ -7,6 +7,10 @@
 #include "device/iic.h"
 #include "server/audio_dev.h"
 #include "asm/includes.h"
+#if defined(CONFIG_STORY_LCD_TEST)
+#include "ui_api.h"
+#include "lcd_drive.h"
+#endif
 #if TCFG_USB_SLAVE_ENABLE || TCFG_USB_HOST_ENABLE
 #include "otg.h"
 #include "usb_host.h"
@@ -274,12 +278,44 @@ SPI1_PLATFORM_DATA_BEGIN(spi1_data)
     .attr	= SPI_SCLK_L_UPH_SMPH | SPI_BIDIR_MODE,
 SPI1_PLATFORM_DATA_END()
 
+#ifdef CONFIG_STORY_LCD_TEST
+/* NT1137G0020-V2 屏：4L1P SPI，SPI2 A 组（PAN_CK=PH0 / PAN_MOSI=PH1）。
+   PH2 是 LCD 的 RS（命令/数据选择），不能配成 SPI2_DI，否则 RS 失效。
+   这里自定义 io 表把 di_pin 设为 -1。 */
+static const struct spi_io lcd_spi2_io[] = {
+    {
+        .cs_pin   = -1,
+        .di_pin   = -1,
+        .do_pin   = IO_PORTH_01,
+        .clk_pin  = IO_PORTH_00,
+        .d2_pin   = -1,
+        .d3_pin   = -1,
+    },
+};
+
+static void lcd_spi2_iomc_init(const struct spi_platform_data *pd)
+{
+    JL_IOMAP->CON1 &= ~(BIT(16) | BIT(17));    /* SPI2 组 A */
+}
+
+static const struct spi_platform_data spi2_data = {
+    .port = 'A',
+    .mode = SPI_1WIRE_MODE,
+    .irq  = IRQ_SPI2_IDX,
+    .attr = SPI_SCLK_L_UPL_SMPH | SPI_UNIDIR_MODE,
+    .clk  = 10000000,
+    .io   = lcd_spi2_io,
+    .reg  = (volatile struct spi_regs *)&JL_SPI2->CON,
+    .init = lcd_spi2_iomc_init,
+};
+#else
 SPI2_PLATFORM_DATA_BEGIN(spi2_data)
     .clk    = 20000000,
     .mode   = SPI_STD_MODE,
     .port   = 'B',
     .attr	= SPI_SCLK_L_UPH_SMPH | SPI_BIDIR_MODE,
 SPI2_PLATFORM_DATA_END()
+#endif
 
 #ifdef CONFIG_AUDIO_ENABLE
 static const struct dac_platform_data dac_data = {
@@ -352,6 +388,150 @@ static const struct audio_pf_data audio_pf_d = {
 static const struct audio_platform_data audio_data = {
     .private_data = (void *) &audio_pf_d,
 };
+#endif
+
+#ifdef CONFIG_STORY_LCD_TEST
+/* WB-AC79-01 PANEL：SPI2 A 组 + GPIO；NT1137G0020-V2 240x296 JD9853 */
+static const struct ui_lcd_platform_data lcd_pdata = {
+    .spi_id          = "spi2",
+    .rs_pin          = IO_PORTH_02,     /* PAN_RS */
+    .te_pin          = IO_PORTH_05,     /* PAN_TE */
+    .rst_pin         = IO_PORTH_04,     /* PAN_RSTN */
+    .cs_pin          = IO_PORTH_03,     /* PAN_CS */
+    .bl_pin          = IO_PORTH_06,     /* PAN_BL_PWM */
+    .touch_int_pin   = IO_PORTC_03,     /* TP_I2C_INT */
+    .touch_reset_pin = IO_PORTC_00,     /* TP_I2C_RST */
+    .lcd_if          = LCD_SPI,
+};
+const struct ui_devices_cfg ui_cfg_data = {
+    .type = TFT_LCD,
+    .private_data = (void *)&lcd_pdata,
+};
+
+#ifdef CONFIG_LCD_BITBANG_TEST
+/* ---- bit-bang JD9853 点亮测试：绕过 SPI2 外设，验证 CK/SDA/RS/CS/RST 硬件链路 ---- */
+#define LCD_BB_CK   IO_PORTH_00
+#define LCD_BB_SDA  IO_PORTH_01
+#define LCD_BB_RS   IO_PORTH_02
+#define LCD_BB_CS   IO_PORTH_03
+#define LCD_BB_RST  IO_PORTH_04
+#define LCD_BB_BL   IO_PORTH_06
+
+struct lcd_bb_cmd {
+    u8 cmd;
+    u8 len;
+    u8 data[32];
+};
+
+static const struct lcd_bb_cmd lcd_bb_init_seq[] = {
+    {0x11, 0, {0}},
+    {0xDF, 2, {0x98, 0x53}},
+    {0xDF, 2, {0x98, 0x53}},
+    {0xB2, 1, {0x23}},
+    {0xB7, 4, {0x00, 0x47, 0x00, 0x6F}},
+    {0xBB, 6, {0x1C, 0x1A, 0x55, 0x73, 0x63, 0xF0}},
+    {0xC0, 2, {0x44, 0xA4}},
+    {0xC1, 1, {0x16}},
+    {0xC3, 8, {0x7D, 0x07, 0x14, 0x06, 0xCF, 0x71, 0x72, 0x77}},
+    {0xC4, 12, {0x00, 0x00, 0xA0, 0x79, 0x0B, 0x0A, 0x16, 0x79, 0x0B, 0x0A, 0x16, 0x82}},
+    {0xC8, 32, {0x3F, 0x32, 0x29, 0x29, 0x27, 0x2B, 0x27, 0x28, 0x28, 0x26, 0x25, 0x17, 0x12, 0x0D, 0x04, 0x00,
+                0x3F, 0x32, 0x29, 0x29, 0x27, 0x2B, 0x27, 0x28, 0x28, 0x26, 0x25, 0x17, 0x12, 0x0D, 0x04, 0x00}},
+    {0xD0, 5, {0x04, 0x06, 0x6B, 0x0F, 0x00}},
+    {0xD7, 2, {0x00, 0x30}},
+    {0xE6, 1, {0x14}},
+    {0xDE, 1, {0x01}},
+    {0xB7, 5, {0x03, 0x13, 0xEF, 0x35, 0x35}},
+    {0xC1, 3, {0x14, 0x15, 0xC0}},
+    {0xC2, 2, {0x06, 0x3A}},
+    {0xC4, 2, {0x72, 0x12}},
+    {0xBE, 1, {0x00}},
+    {0xDE, 1, {0x02}},
+    {0xE5, 3, {0x00, 0x02, 0x00}},
+    {0xE5, 3, {0x01, 0x02, 0x00}},
+    {0xDE, 1, {0x00}},
+    {0x35, 1, {0x00}},
+    {0x3A, 1, {0x05}},
+    {0x2A, 4, {0x00, 0x00, 0x00, 0xEF}},
+    {0x2B, 4, {0x00, 0x00, 0x01, 0x27}},
+    {0xDE, 1, {0x02}},
+    {0xE5, 3, {0x00, 0x02, 0x00}},
+    {0xDE, 1, {0x00}},
+    {0x29, 0, {0}},
+};
+
+static void lcd_bb_delay(void)
+{
+    for (volatile int i = 0; i < 8; i++) {
+    }
+}
+
+static void lcd_bb_byte(u8 dat, u8 rs)
+{
+    gpio_direction_output(LCD_BB_RS, rs);
+    gpio_direction_output(LCD_BB_CS, 0);
+    for (int i = 7; i >= 0; i--) {
+        gpio_direction_output(LCD_BB_CK, 0);
+        gpio_direction_output(LCD_BB_SDA, (dat >> i) & 1);
+        lcd_bb_delay();
+        gpio_direction_output(LCD_BB_CK, 1);
+        lcd_bb_delay();
+    }
+    gpio_direction_output(LCD_BB_CS, 1);
+}
+
+static void lcd_bb_fill(u16 color)
+{
+    lcd_bb_byte(0x2A, 0);
+    lcd_bb_byte(0, 1); lcd_bb_byte(0, 1); lcd_bb_byte(0, 1); lcd_bb_byte(239, 1);
+    lcd_bb_byte(0x2B, 0);
+    lcd_bb_byte(0, 1); lcd_bb_byte(0, 1); lcd_bb_byte(0x01, 1); lcd_bb_byte(0x27, 1);
+    lcd_bb_byte(0x2C, 0);
+    for (u32 i = 0; i < 240 * 296; i++) {
+        lcd_bb_byte(color >> 8, 1);
+        lcd_bb_byte(color & 0xff, 1);
+    }
+}
+
+void story_lcd_bb_test(void)
+{
+    gpio_direction_output(LCD_BB_CK, 0);
+    gpio_direction_output(LCD_BB_SDA, 0);
+    gpio_direction_output(LCD_BB_RS, 0);
+    gpio_direction_output(LCD_BB_CS, 1);
+    gpio_direction_output(LCD_BB_RST, 1);
+    gpio_direction_output(LCD_BB_BL, 1);
+
+    lcd_delay(10);
+    gpio_direction_output(LCD_BB_RST, 0);
+    lcd_delay(30);
+    gpio_direction_output(LCD_BB_RST, 1);
+    lcd_delay(120);
+
+    printf("STORY_LCD_BB: JD9853 bitbang init\r\n");
+    for (u32 i = 0; i < ARRAY_SIZE(lcd_bb_init_seq); i++) {
+        lcd_bb_byte(lcd_bb_init_seq[i].cmd, 0);
+        for (u32 j = 0; j < lcd_bb_init_seq[i].len; j++) {
+            lcd_bb_byte(lcd_bb_init_seq[i].data[j], 1);
+        }
+        if (lcd_bb_init_seq[i].cmd == 0x11) {
+            lcd_delay(120);
+        }
+    }
+    lcd_delay(50);
+
+    printf("STORY_LCD_BB: color loop\r\n");
+    while (1) {
+        lcd_bb_fill(0xF800);
+        lcd_delay(300);
+        lcd_bb_fill(0x07E0);
+        lcd_delay(300);
+        lcd_bb_fill(0x001F);
+        lcd_delay(300);
+        lcd_bb_fill(0xFFFF);
+        lcd_delay(300);
+    }
+}
+#endif /* CONFIG_LCD_BITBANG_TEST */
 #endif
 
 

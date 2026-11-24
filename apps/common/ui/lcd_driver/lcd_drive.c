@@ -12,8 +12,9 @@
 #endif
 
 #include "lcd_drive.h"
+#include "lcd_config.h"
 
-#ifdef CONFIG_UI_ENABLE
+#if defined(CONFIG_UI_ENABLE) || defined(CONFIG_STORY_LCD_TEST)
 
 
 /* 屏幕驱动的接口 */
@@ -178,6 +179,11 @@ void WriteCOM(u8 cmd)
     lcd_cs_pinstate(0);
     lcd_rs_pinstate(0);//cmd
     lcd_send_byte(cmd);
+    /* SPI 非阻塞发送 + GPIO CS：必须等发完再拉高 CS，否则命令会被截断。
+       EMI/PAP/IMD 保持原行为，避免拖慢其他板子的推屏 */
+    if (lcd_pdata && lcd_pdata->lcd_if == LCD_SPI) {
+        lcd_interface_non_block_wait();
+    }
     lcd_cs_pinstate(1);
 }
 
@@ -186,6 +192,9 @@ void WriteDAT_8(u8 dat)
     lcd_cs_pinstate(0);
     lcd_rs_pinstate(1);//dat
     lcd_send_byte(dat);
+    if (lcd_pdata && lcd_pdata->lcd_if == LCD_SPI) {
+        lcd_interface_non_block_wait();
+    }
     lcd_cs_pinstate(1);
 }
 
@@ -194,6 +203,9 @@ void WriteDAT_DMA(u8 *dat, u32 len)
     lcd_cs_pinstate(0);
     lcd_rs_pinstate(1);//dat
     lcd_send_map(dat, len);
+    if (lcd_pdata && lcd_pdata->lcd_if == LCD_SPI) {
+        lcd_interface_non_block_wait();
+    }
     lcd_cs_pinstate(1);
 }
 
@@ -343,6 +355,14 @@ static int lcd_init(void *p)
         printf("\n [lcd_drive] %s -[find_check_TM9486X] %d\n", __FUNCTION__, __LINE__);
 #endif
 
+#if TCFG_LCD_ST7789V_ENABLE || TCFG_LCD_JD9853_ENABLE || TCFG_LCD_ST7735S_ENABLE
+        /* SPI 屏：尺寸来自 lcd_config.h（板级可覆盖 LCD_W/LCD_H） */
+        lcd_w = LCD_W;
+        lcd_h = LCD_H;
+        lcd_bk_on = 1;
+        lcd_bk_off = 0;
+#endif
+
         //初始化全局显示内存配置
         lcd_yuv420_data_size = lcd_w * lcd_h * 3 / 2;
 #if TCFG_LCD_480x272_8BITS //rgb888
@@ -409,8 +429,10 @@ static int lcd_init(void *p)
         }
         if (lcd_dev && lcd_dev->LCD_Init) {
             lcd_dev->LCD_Init();
-            //图像合成线程初始化
+#if defined(CONFIG_UI_ENABLE) || !defined(CONFIG_STORY_LCD_TEST)
+            //图像合成线程初始化（纯屏点亮测试不需要，避免未初始化帧覆盖纯色）
             picture_compose_task_init();
+#endif
             return 0;
         }
     }
@@ -436,6 +458,14 @@ void user_ui_lcd_init(void)
     extern const struct ui_devices_cfg ui_cfg_data;
     int lcd_ui_init(void *arg);
     lcd_ui_init(&ui_cfg_data);
+}
+
+/* bring-up: 直接给屏刷纯色，用于 LCD 点亮验证 */
+void lcd_test_show_color(u32 color)
+{
+    if (lcd_dev && lcd_dev->LCD_ClearScreen) {
+        lcd_dev->LCD_ClearScreen(color);
+    }
 }
 static void lcd_get_screen_info(struct lcd_info *info)
 {

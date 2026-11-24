@@ -48,7 +48,7 @@
   - 只保留 UART0/PB1/PB2、PB6 ADC、PB7 PW_EN 和心跳
   - 不启动 app_music / BT / WiFi / UI / audio / camera
 - 阶段 2：audio DAC / PA / mic，喇叭和 mic 验证
-- 阶段 3：LCD UI / 设置界面
+- 阶段 3：LCD UI / 设置界面（进行中：JD9853 屏已点亮，DUI UI 演示已跑通；产品 UI/触摸待做，见 §八）
 - 阶段 4：WiFi + 经典蓝牙音箱（A2DP 接收）
 - 阶段 5：豆包 AI 接入（WiFi + ASR/LLM/TTS）
 
@@ -196,7 +196,7 @@ make ac791n_wifi_story_machine
 
 - 阶段 1 只验证故事机内核 + 板级电源/串口，不含音频/BT/WiFi/UI
 - 阶段 2（已完成，见 §七）：DAC/功放/喇叭 + MIC0 录音回放；MIC1 AEC 和音量表待后续
-- 阶段 3 需要把摄像头板的 LCD/EMI/IIC 配置移植到故事机板级，打开 `CONFIG_UI_ENABLE`
+- 阶段 3（进行中，见 §八）：故事机板实际是 SPI JD9853 240×296，不是摄像头板的 EMI ILI9481；已新增 JD9853 驱动并打开 `CONFIG_UI_ENABLE`，触摸 SPT5113C 待接入
 - 阶段 4 需要验证 BT 天线/与 WiFi 共存
 - 阶段 5 豆包 AI 无现成 demo，需要基于 WiFi/HTTP/WebSocket + 音频流实现
 - 摄像头固件保留作回退；每阶段单独提交
@@ -239,3 +239,31 @@ make ac791n_wifi_story_machine
 
 - MIC1（功放回采 AEC）尚未接入，AEC/回声消除后续再做
 - 回放音量链路目前用强制最大增益验证，产品音量表需再校准
+
+## 八、阶段 3：LCD / UI bring-up（2026-11-24）
+
+### 硬件
+
+- 屏：**NT1137G0020-V2**，240×296，驱动 IC **JD9853**，4L1P（4 线 SPI）
+- 接口：`PAN_CK`=PH0（SPI2_CK_A）、`PAN_MOSI`=PH1（SPI2_DO_A）、`PAN_RS`=PH2、`PAN_CS`=PH3、`PAN_RSTN`=PH4、`PAN_TE`=PH5、`PAN_BL_PWM`=PH6
+- 触摸：**SPT5113C**（驱动包 `spt5113c_JL707_driver_v0.2`），I2C SCL=PC1/SDA=PC2/INT=PC3/RST=PC0，待接入
+
+### 关键问题与修复
+
+1. **PH2 引脚冲突**：SPI2 A 组的 PH2 是 `SPI2_DI_A`，但硬件把它用作 LCD 的 RS（命令/数据选择）。给 SPI2 自定义 io 表把 `di_pin = -1`，让 SPI 驱动不把 PH2 配成 DI。
+2. **非阻塞 SPI 截断命令**：SDK 的 LCD 框架把 SPI 配成非阻塞发送，`WriteCOM/WriteDAT` 发完字节立刻拉高 CS；10MHz 下 1 字节要 0.8µs，CS 提前拉高会截断命令/数据（初始化全丢、屏保持上电雪花）。已在每次写后 `lcd_interface_non_block_wait()` 等发送完成再拉高 CS。
+3. **JD9853 驱动**：SDK 没有现成驱动，新增 `apps/common/ui/lcd_driver/lcd_jd9853.c`（JD9853 参考初始化序列 + 240×296 窗口 + RGB565），ST7789V 驱动保持原样，互不影响。
+4. **UI**：打开 `CONFIG_UI_ENABLE`，把 `music_ui.c` 加入构建并启动 `ui_demo_task_init()`；`ui_res` 由构建脚本打包成 UIPACKRES。`music_ui.c` 的静态 `ui_server_init` 改名避免与公共符号冲突。
+5. **TE**：7912AB 暂用 `USE_LCD_TE=0`（免 TE 推帧、初始化即开背光），避免 TE 链路未通导致不发帧/黑屏；代价是全屏切换可能有撕裂，后续再单独调 PH5 的 TE。
+
+### 实测结论
+
+- GPIO bit-bang（诊断用，代码保留在 `board_7911B.c`）能正常出纯色，证明屏/接线/初始化/格式正确
+- SPI2 路径修复后纯色正常
+- UI 正常显示（menu.res 的 PAGE_0 / 杰理宣传页），UI 资源 4/4 加载成功
+
+### 已知限制（阶段 3）
+
+- 免 TE 模式全屏刷新可能有撕裂，TE 消撕裂后续再做
+- SPT5113C 触摸尚未接入
+- UI 目前是 SDK 的 music_ui 演示界面，产品 UI 后续替换

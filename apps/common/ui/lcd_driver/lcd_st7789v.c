@@ -181,11 +181,11 @@ void ST7789V_test(void)
         ST7789V_clear_screen(BLUE);
         printf("LCD_ST7789V_TSET_BLUE\n");
         os_time_dly(100);
-        ST7789V_clear_screen(GRED);
-        printf("LCD_ST7789V_TSET_GRED\n");
+        ST7789V_clear_screen(GREEN);
+        printf("LCD_ST7789V_TSET_GREEN\n");
         os_time_dly(100);
-        ST7789V_clear_screen(BRRED);
-        printf("LCD_ST7789V_TSET_BRRED\n");
+        ST7789V_clear_screen(RED);
+        printf("LCD_ST7789V_TSET_RED\n");
         os_time_dly(100);
         ST7789V_clear_screen(YELLOW);
         printf("LCD_ST7789V_TSET_YELLOW\n");

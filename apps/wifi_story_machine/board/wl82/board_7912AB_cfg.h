@@ -31,6 +31,10 @@
 #define TCFG_MIC_CHANNEL_MAP    LADC_CH_MIC0_P_N
 #define TCFG_MIC_CHANNEL_NUM    1
 
+/* 阶段3：NT1137G0020-V2 屏，240x296，JD9853（ST7789 兼容），4L1P SPI */
+#define LCD_W                   240
+#define LCD_H                   296
+
 #ifdef CONFIG_BOARD_MUTEX
 #error "board config can not enable at the same time, just select one!!!"
 #else

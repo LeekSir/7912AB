@@ -559,6 +559,7 @@ c_SRC_FILES := \
 	../../../../apps/common/ui/lcd_driver/lcd_st7735s.c \
 	../../../../apps/common/ui/lcd_driver/lcd_st7789s.c \
 	../../../../apps/common/ui/lcd_driver/lcd_st7789v.c \
+	../../../../apps/common/ui/lcd_driver/lcd_jd9853.c \
 	../../../../apps/common/ui/lcd_driver/lcd_tm9486.c \
 	../../../../apps/common/ui/touch_panel/ft6236.c \
 	../../../../apps/common/ui/touch_panel/gt911.c \
@@ -613,6 +614,7 @@ c_SRC_FILES := \
 	../../../../apps/wifi_story_machine/bt_ble/bt_music.c \
 	../../../../apps/wifi_story_machine/multiple_ethernetif.c \
 	../../../../apps/wifi_story_machine/ui/led_ui_gr202.c \
+	../../../../apps/wifi_story_machine/ui/music_ui.c \
 	../../../../apps/wifi_story_machine/video/camera_lcd_demo.c \
 	../../../../apps/wifi_story_machine/video/get_yuv_data.c \
 	../../../../apps/wifi_story_machine/video/jpeg2yuv.c \

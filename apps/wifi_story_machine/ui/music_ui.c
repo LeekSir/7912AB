@@ -15,6 +15,7 @@
 #include "ename.h"
 #include "asm/rtc.h"
 #include "lcd_drive.h"
+#include "lcd_data_driver.h"
 #include "yuv_soft_scalling.h"
 #include "event/key_event.h"
 #include "app_music.h"
@@ -195,7 +196,7 @@ static void ui_update_fail(void)
 }
 
 /*==========ui_应用初始化部分===========*/
-static void ui_server_init(void)
+static void music_ui_server_init(void)
 {
     extern const struct ui_devices_cfg ui_cfg_data;
     int lcd_ui_init(void *arg);
@@ -207,7 +208,7 @@ static void ui_demo(void *priv)
     int msg[32];
 
     set_lcd_show_data_mode(UI);
-    ui_server_init();
+    music_ui_server_init();
     open_animation(10);
     ui_show_main(PAGE_0);
 

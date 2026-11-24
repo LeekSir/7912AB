@@ -154,6 +154,8 @@ const struct task_info task_info_table[] = {
 
 #ifdef CONFIG_UI_ENABLE
     {"ui",                  21,      768,   256   },
+#endif
+#if defined(CONFIG_UI_ENABLE) || defined(CONFIG_STORY_LCD_TEST)
     {"lcd_task_0",			8,	  1024,	  32   },
     {"lcd_task_1",			8,	  1024,	  32   },
     {"te_task",		    	9,	  1024,	  32   },
@@ -208,6 +210,40 @@ void app_default_event_handler(struct sys_event *event)
     }
 }
 
+
+#ifdef CONFIG_STORY_LCD_TEST
+extern void story_lcd_bb_test(void);
+extern void user_lcd_init(void);
+extern void lcd_test_show_color(u32 color);
+extern void lcd_bl_pinstate(u8 state);
+
+#define LCD_TEST_USE_BITBANG 0  /* 1: GPIO bit-bang（已验证能亮）；0: 硬件 SPI2 */
+
+/* 阶段3 LCD 点亮：NT1137G0020-V2 240x296 JD9853 */
+static void story_lcd_test_task(void *p)
+{
+    os_time_dly(100);
+
+#if LCD_TEST_USE_BITBANG
+    story_lcd_bb_test();    /* 不返回：bit-bang 初始化 + 纯色循环 */
+#else
+    user_lcd_init();
+    lcd_bl_pinstate(1);
+    printf("STORY_LCD_TEST: SPI framework init done, first RED 2s\r\n");
+
+    /* 先整屏红停 2s，确认满屏纯色 */
+    lcd_test_show_color(0xF800);
+    os_time_dly(200);
+
+    while (1) {
+        lcd_test_show_color(0x07E0); os_time_dly(100);
+        lcd_test_show_color(0x001F); os_time_dly(100);
+        lcd_test_show_color(0xFFFF); os_time_dly(100);
+        lcd_test_show_color(0xF800); os_time_dly(100);
+    }
+#endif
+}
+#endif
 
 #ifdef CONFIG_STORY_BRINGUP
 extern u32 power_key_adc_value(void);
@@ -402,6 +438,13 @@ void app_main()
     os_task_create(story_bringup_hb, NULL, 10, 1024, 0, "story_bringup_hb");
 #ifdef CONFIG_STORY_AUDIO_TEST
     os_task_create(story_mic_test_task, NULL, 11, 2048, 0, "story_mic_test");
+#endif
+#if defined(CONFIG_STORY_LCD_TEST) && !defined(CONFIG_STORY_UI)
+    os_task_create(story_lcd_test_task, NULL, 12, 2048, 0, "story_lcd_test");
+#endif
+#ifdef CONFIG_STORY_UI
+    extern int ui_demo_task_init(void);
+    ui_demo_task_init();    /* DUI UI：lcd_ui_init + UIPACKRES + music_ui */
 #endif
     return;
 #else
