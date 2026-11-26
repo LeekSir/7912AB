@@ -48,7 +48,7 @@
   - 只保留 UART0/PB1/PB2、PB6 ADC、PB7 PW_EN 和心跳
   - 不启动 app_music / BT / WiFi / UI / audio / camera
 - 阶段 2：audio DAC / PA / mic，喇叭和 mic 验证
-- 阶段 3：LCD UI / 设置界面（进行中：JD9853 屏已点亮，DUI UI 演示已跑通；产品 UI/触摸待做，见 §八）
+- 阶段 3：LCD UI / 设置界面（进行中：JD9853 屏已点亮，DUI UI 演示已跑通，SPT5113C 触摸已接入；产品 UI 待做，见 §八）
 - 阶段 4：WiFi + 经典蓝牙音箱（A2DP 接收）
 - 阶段 5：豆包 AI 接入（WiFi + ASR/LLM/TTS）
 
@@ -196,7 +196,7 @@ make ac791n_wifi_story_machine
 
 - 阶段 1 只验证故事机内核 + 板级电源/串口，不含音频/BT/WiFi/UI
 - 阶段 2（已完成，见 §七）：DAC/功放/喇叭 + MIC0 录音回放；MIC1 AEC 和音量表待后续
-- 阶段 3（进行中，见 §八）：故事机板实际是 SPI JD9853 240×296，不是摄像头板的 EMI ILI9481；已新增 JD9853 驱动并打开 `CONFIG_UI_ENABLE`，触摸 SPT5113C 待接入
+- 阶段 3（进行中，见 §八）：故事机板实际是 SPI JD9853 240×296，不是摄像头板的 EMI ILI9481；已新增 JD9853 驱动并打开 `CONFIG_UI_ENABLE`，SPT5113C 触摸已接入（原厂 037_1 固件，5 点触摸靶实测精准）
 - 阶段 4 需要验证 BT 天线/与 WiFi 共存
 - 阶段 5 豆包 AI 无现成 demo，需要基于 WiFi/HTTP/WebSocket + 音频流实现
 - 摄像头固件保留作回退；每阶段单独提交
@@ -246,7 +246,7 @@ make ac791n_wifi_story_machine
 
 - 屏：**NT1137G0020-V2**，240×296，驱动 IC **JD9853**，4L1P（4 线 SPI）
 - 接口：`PAN_CK`=PH0（SPI2_CK_A）、`PAN_MOSI`=PH1（SPI2_DO_A）、`PAN_RS`=PH2、`PAN_CS`=PH3、`PAN_RSTN`=PH4、`PAN_TE`=PH5、`PAN_BL_PWM`=PH6
-- 触摸：**SPT5113C**（驱动包 `spt5113c_JL707_driver_v0.2`），I2C SCL=PC1/SDA=PC2/INT=PC3/RST=PC0，待接入
+- 触摸：**SPT5113C**，已接入 `apps/common/ui/touch_panel/spt5113c.c`（原厂 v0.2 驱动流程 + BLST_QZ037-NB09_01 调整版固件 037_1，8750B / CRC 0xccf2，上电自动校验/烧录）；I2C SCL=PC1/SDA=PC2/INT=PC3/RST=PC0
 
 ### 关键问题与修复
 
@@ -265,5 +265,5 @@ make ac791n_wifi_story_machine
 ### 已知限制（阶段 3）
 
 - 免 TE 模式全屏刷新可能有撕裂，TE 消撕裂后续再做
-- SPT5113C 触摸尚未接入
+- SPT5113C 触摸已接入：首次上电自动烧录新固件（0x8813→0xccf2），5 点触摸靶在原生竖屏 240×296 下 1:1 映射，实测跟手精准；产品 UI 的触摸交互后续再做
 - UI 目前是 SDK 的 music_ui 演示界面，产品 UI 后续替换
