@@ -12,6 +12,8 @@
 
 extern const u8 *const ui_demo_page_rle[4];
 extern const u32 ui_demo_page_size[4];
+extern const u8 *const ui_demo_test_rle;
+extern const u32 ui_demo_test_size;
 extern const u8 *const ui_demo_splash_bg_rle;
 extern const u32 ui_demo_splash_bg_size;
 extern const u8 *const ui_demo_head_rle[UI_DEMO_SPLASH_NUM];

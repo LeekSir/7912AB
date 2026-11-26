@@ -27,7 +27,14 @@
 #define CONFIG_UI_ENABLE                        1
 #define CONFIG_STORY_UI                         1
 
-/* 1 = 5 点触摸靶子（默认）；0 = 向日葵滑动 demo */
+/* 1 = 官方故事机 UI demo（ui_project/4.ui_demo_wifi_story），跳过开机动画直接进 PAGE_0 */
+/* 触摸测试期间关闭 DUI demo，走 CUSTOM_DEMO 分支的 5 点触摸靶 */
+/* #define CONFIG_STORY_UI_DUI_DEMO             1 */
+
+/* 1 = 自定义滑动 demo / 触摸靶；0 = 原厂 DUI 界面 */
+#define CONFIG_STORY_UI_CUSTOM_DEMO             1
+
+/* 1 = 5 点触摸靶子；0 = 向日葵滑动 demo */
 #ifndef CONFIG_STORY_UI_TOUCH_TARGET
 #define CONFIG_STORY_UI_TOUCH_TARGET            1
 #endif
@@ -139,7 +146,8 @@
 #endif
 
 #if defined CONFIG_UI_FILE_SAVE_IN_RESERVED_EXPAND_ZONE
-#define CONFIG_UI_PACKRES_LEN 0x180000
+/* UI 资源区：故事机 3 页约 1.56MB；wifi_camera demo（8 页 + 17 帧车模动画）约 2.4MB */
+#define CONFIG_UI_PACKRES_LEN 0x250000
 #define CONFIG_UI_PACKRES_ADR ((__FLASH_SIZE__) - (CONFIG_UI_PACKRES_LEN) - 0x1000)
 #else
 #define CONFIG_UI_PACKRES_LEN 0
@@ -148,10 +156,10 @@
 
 #if defined CONFIG_VOICE_PROMPT_FILE_SAVE_IN_RESERVED_EXPAND_ZONE
 #if defined CONFIG_UI_FILE_SAVE_IN_RESERVED_EXPAND_ZONE
-#define CONFIG_AUDIO_PACKRES_LEN 0x180000
+#define CONFIG_AUDIO_PACKRES_LEN 0x150000
 #define CONFIG_AUDIO_PACKRES_ADR ((__FLASH_SIZE__) - (CONFIG_UI_PACKRES_LEN) - 0x1000 - CONFIG_AUDIO_PACKRES_LEN)
 #else
-#define CONFIG_AUDIO_PACKRES_LEN 0x180000
+#define CONFIG_AUDIO_PACKRES_LEN 0x150000
 #define CONFIG_AUDIO_PACKRES_ADR ((__FLASH_SIZE__) - CONFIG_AUDIO_PACKRES_LEN - 0x1000)
 #endif
 #else
@@ -851,8 +859,12 @@
 #endif
 
 #if TCFG_LCD_ST7789S_ENABLE || TCFG_LCD_ST7789V_ENABLE || TCFG_LCD_JD9853_ENABLE || TCFG_LCD_ILI9341_ENABLE || TCFG_LCD_ILI9481_ENABLE
-/* 7912AB：PAN_TE -> PH5，JD9853 已开 TEON，按面板 V-blank 同步推屏 */
+#if defined(CONFIG_BOARD_7912AB)
+/* DUI 基线：TE 关闭，初始化时直接开背光；自定义 demo 需要时再打开 */
+#define USE_LCD_TE                          0
+#else
 #define USE_LCD_TE                          1
+#endif
 #endif
 
 #endif//CONFIG_UI_ENABLE

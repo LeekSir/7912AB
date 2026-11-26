@@ -1,4 +1,3 @@
-
 #ifndef UI_TOOL_ENAME
 #define UI_TOOL_ENAME
 
@@ -40,4 +39,3 @@
 #define UI_VERSION 0X84395DE
 
 #endif //UI_TOOL_ENAME_H
-

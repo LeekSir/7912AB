@@ -168,6 +168,8 @@ static int touch_last_y;
 
 static int splash_active = 1;
 static u32 splash_start;
+static u8 test_active;
+static u32 test_start;
 
 static void demo_render(void)
 {
@@ -301,6 +303,21 @@ static void demo_task(void *p)
             }
             if (now - splash_start >= 5000) {
                 splash_active = 0;
+                test_active = 1;
+                test_start = now;
+                dp_rle_decode(ui_demo_test_rle, dp_fb, DP_W * DP_H);
+                dp_flush();
+                printf("UI_DEMO: stripe test 6s (1px/2px/3px)\n");
+            }
+            touch_down_last = down;
+            os_time_dly(2);
+            continue;
+        }
+
+        /* 1px 条纹测试：判断屏是否 1:1 显示 */
+        if (test_active) {
+            if (now - test_start >= 6000) {
+                test_active = 0;
                 auto_tick = now;
                 last_render = 0;
                 demo_render();

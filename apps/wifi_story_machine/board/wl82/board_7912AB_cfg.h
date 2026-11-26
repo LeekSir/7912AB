@@ -31,9 +31,20 @@
 #define TCFG_MIC_CHANNEL_MAP    LADC_CH_MIC0_P_N
 #define TCFG_MIC_CHANNEL_NUM    1
 
-/* 阶段3：NT1137G0020-V2 屏，240x296，JD9853（ST7789 兼容），4L1P SPI */
+/* 阶段3：NT1137G0020-V2 屏，240x296，JD9853（ST7789 兼容），4L1P SPI
+   - 触摸靶测试：面板原生竖屏 240x296，5 个靶环全部可见，触摸 1:1 便于标定
+   - DUI 故事机 UI：横屏 320x240（MADCTL 0x60，面板实际可见 296x240，右侧 24 列不可见）
+   注：本文件在 app_config.h 之前展开，不能判断 CONFIG_STORY_UI_TOUCH_TARGET，
+       故单独用 CONFIG_STORY_TOUCH_TEST_NATIVE_PORTRAIT 控制。 */
+#define CONFIG_STORY_TOUCH_TEST_NATIVE_PORTRAIT  1
+
+#if CONFIG_STORY_TOUCH_TEST_NATIVE_PORTRAIT
 #define LCD_W                   240
 #define LCD_H                   296
+#else
+#define LCD_W                   320
+#define LCD_H                   240
+#endif
 
 /* SPT5113C 触摸坐标映射：默认按原厂屏幕坐标。
    实测 raw 为 12bit 时把 RAW_MAX 改成 4096；方向不对时改 SWAP/INVERT。 */

@@ -14,7 +14,7 @@
 
 #if TCFG_TOUCH_SPT5113C_ENABLE
 
-/* SPT5113C 内部 8051 固件（原厂 spt5113c_JL707_driver_v0.2 包） */
+/* SPT5113C 内部 8051 固件（原厂 BLST_QZ037-NB09_01 调整版，8750B / CRC 0xccf2） */
 #include "spt5113c_firmware.h"
 
 /* SPT5113C：
@@ -26,7 +26,8 @@
  *  - 启动/ASU 寄存器：7bit 地址 0x60（写 0xC0 / 读 0xC1），16bit 寄存器地址（低字节在前）
  *
  * 原厂上电流程：芯片码校验 -> 固件 CRC 校验/烧录 -> start_work。
- * 触摸坐标目前直接按原厂方式使用，坐标标定等触摸厂家调整固件后再做。
+ * 已合并原厂调整版固件（037_1 / 8750B / CRC 0xccf2）；坐标按 spt_map() 映射，
+ * 若新固件直接输出屏幕坐标则 SPT_RAW_MAX_X/Y = LCD_W/H 即可。
  */
 #define SPT_APP_W               0x26
 #define SPT_APP_R               0x27

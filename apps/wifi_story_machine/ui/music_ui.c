@@ -203,6 +203,22 @@ static void music_ui_server_init(void)
     lcd_ui_init(&ui_cfg_data);
 }
 
+#if defined(CONFIG_STORY_UI_DUI_DEMO)
+/* 临时演示：每 6 秒自动切换一页，方便确认 3 页资源都正常 */
+void story_ui_demo_page_cycle(void *p)
+{
+    static const int pages[] = {PAGE_0, PAGE_1, PAGE_2};
+    u8 idx = 0;
+
+    while (1) {
+        os_time_dly(600);
+        idx = (idx + 1) % ARRAY_SIZE(pages);
+        printf("STORY_UI_DEMO: show page %d\n", idx);
+        ui_show_main(pages[idx]);
+    }
+}
+#endif
+
 static void ui_demo(void *priv)
 {
     int msg[32];
@@ -216,13 +232,26 @@ static void ui_demo(void *priv)
     SPT5113C_task_init();
 #endif
 
-#if defined(CONFIG_BOARD_7912AB) && TCFG_LCD_JD9853_ENABLE
+/* 1 = 自定义滑动 demo / 触摸靶；0 = 原厂 DUI 界面（默认） */
+#ifndef CONFIG_STORY_UI_CUSTOM_DEMO
+#define CONFIG_STORY_UI_CUSTOM_DEMO       0
+#endif
+
+#if defined(CONFIG_STORY_UI_DUI_DEMO)
+    /* 官方故事机 UI demo（ui_project/4.ui_demo_wifi_story 资源）：
+       跳过杰理开机动画，直接进 PAGE_0，并自动轮播 3 页方便看效果 */
+    ui_show_main(PAGE_0);
+    {
+        extern void story_ui_demo_page_cycle(void *p);
+        thread_fork("story_ui_cycle", 10, 1024, 0, 0, story_ui_demo_page_cycle, NULL);
+    }
+#elif CONFIG_STORY_UI_CUSTOM_DEMO && defined(CONFIG_BOARD_7912AB) && TCFG_LCD_JD9853_ENABLE
 #if CONFIG_STORY_UI_TOUCH_TARGET
     /* 7912AB：5 点触摸靶子测试 UI */
     extern void ui_touch_target_start(void);
     ui_touch_target_start();
 #else
-    /* 7912AB demo：跳过杰理开机动画和默认页面，直接进向日葵 + 滑动菜单 */
+    /* 7912AB demo：向日葵 + 滑动菜单 */
     extern void ui_demo_slide_start(void);
     ui_demo_slide_start();
 #endif
